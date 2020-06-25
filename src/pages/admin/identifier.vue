@@ -1,0 +1,178 @@
+<template>
+  <div class="student-identifier">
+    <div class="photo-upload">
+      <div class="take-tip">移动端拍照时请尽量少包含与二维码无关信息</div>
+      <a target="_black" class="file">
+        选择文件
+        <input
+          type="file"
+          id="show-img"
+          name="image"
+          ref="input_btn"
+          @change="readQR($event)"
+          accept="image/*"
+        />
+      </a>
+      <span>{{imgName}}</span>
+      <el-button type="text" :loading="loading"></el-button>
+    </div>
+    <component
+      :message="message"
+      :studentMsg="studentMsg"
+      :showRecord="showRecord"
+      :is="currentComponent"
+    ></component>
+  </div>
+</template>
+
+<script>
+const imageConversion = require("image-conversion");
+import { getEquipData, getStudentMsg } from "../../tools/func";
+import StudentMsg from "../../components/studentMsg";
+import Message from "../../components/message";
+import ResultsMsg from "../../components/resultsMsg";
+export default {
+  name: "sidentifier",
+
+  data() {
+    let timeout = null;
+    return {
+      fileImg: "",
+      data: "",
+      picPath: "",
+      message: "",
+      maxSize: 1024 * 1024,
+      studentMsg: {},
+      message: "",
+      showRecord: true,
+      currentComponent: "",
+      loading: false,
+      imgName: ""
+    };
+  },
+  mounted() {},
+  methods: {
+    readQR(e) {
+      this.currentComponent = "";
+      this.loading = true;
+
+      this.fileImg = this.$refs.input_btn.files[0];
+      let that = this;
+      if (this.fileImg.size > this.maxSize) {
+        imageConversion
+          .compressAccurately(this.fileImg, {
+            width: 300,
+            height: 450,
+            size: 300
+          })
+          .then(res => {
+            this.QR(res);
+          });
+      } else {
+        this.QR(this.fileImg);
+      }
+    },
+
+    QR(res) {
+      this.imgName = res.name;
+      var formData = new FormData();
+      formData.append("imageFile", res);
+      // 请求头
+      let config = {
+        //添加请求头
+        headers: {
+          "Content-Type":
+            "multipart/form-data;boundary = " + new Date().getTime()
+        }
+      };
+      this.$http.post(this.$Api.uploadImg, formData, config).then(res => {
+        const { code, msg, data } = res.data || {};
+
+        this.loading = false;
+
+        if (code !== 0) {
+          this.$message.error(msg);
+          return;
+        }
+
+        if (JSON.parse(data).error_code) {
+          this.$message.error("无法识别！");
+          return;
+        }
+
+        const { log_id, codes_result_num, codes_result } =
+          JSON.parse(data) || {};
+
+        if (codes_result_num === 0) {
+          this.$message.error("未识别到二维码");
+          return;
+        }
+
+        if (codes_result_num >= 2 || codes_result[0].text.length > 1) {
+          this.message = codes_result;
+          this.currentComponent = ResultsMsg;
+          return;
+        }
+
+        const qr = codes_result[0].text[0];
+        getStudentMsg(qr).then(res => {
+          const { code, msg, data } = res.data || {};
+
+          switch (code) {
+            case 0:
+              this.studentMsg = data;
+              this.currentComponent = StudentMsg;
+              return;
+              break;
+            case 5003:
+              this.message = msg;
+              this.currentComponent = Message;
+              break;
+            default:
+              this.$message.error(msg);
+              return;
+              break;
+          }
+        });
+      });
+    }
+  }
+};
+</script>
+
+<style lang='scss'>
+.student-identifier {
+  .photo-upload {
+    height: 50px;
+    margin-bottom: 20px;
+    .take-tip {
+      font-size: 8px;
+      color: red;
+      margin-bottom: 10px;
+    }
+    .file {
+      position: relative;
+      display: inline-block;
+      background: #409eff;
+      border: 1px solid #409eff;
+      border-radius: 4px;
+      padding: 8px 12px;
+      overflow: hidden;
+      color: #fff;
+      text-decoration: none;
+      text-indent: 0;
+      line-height: 20px;
+      #show-img {
+        position: absolute;
+        font-size: 100px;
+        right: 0;
+        top: 0;
+        opacity: 0;
+      }
+    }
+    #show-pic {
+      height: 45px;
+    }
+  }
+}
+</style>
